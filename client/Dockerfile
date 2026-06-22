@@ -1,5 +1,5 @@
-# Step 1: Build the React/Vite application
-FROM node:18-alpine AS build
+# Step 1: Build the React/Vite application using AWS ECR Mirror
+FROM public.ecr.aws/docker/library/node:18-alpine AS build
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -10,8 +10,8 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# Step 2: Serve the production-built static files using Nginx
-FROM nginx:alpine
+# Step 2: Serve using AWS ECR Mirror Nginx image
+FROM public.ecr.aws/nginx/nginx:alpine
 # Vite defaults its production output folder to 'dist'
 COPY --from=build /app/dist /usr/share/nginx/html
 
