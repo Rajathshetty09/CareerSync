@@ -1,0 +1,141 @@
+---
+- name: Deploy Hotel Booking App with Split Frontend and Backend Folders
+  hosts: webservers
+  become: yes
+  vars:
+    repo_dir: /var/www/hotel-booking
+    node_version: "20.x"
+    repo_url: "https://github.com/Rajathshetty09/CareerSync.git"
+    repo_branch: "main"
+
+  tasks:
+    - name: Update apt package cache (Ubuntu/Debian)
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install Prerequisites (including Nginx)
+      apt:
+        name:
+          - curl
+          - git
+          - redis-server
+          - nginx
+        state: present
+
+    - name: Ensure Redis Service is Running and Enabled
+      systemd:
+        name: redis-server
+        state: started
+        enabled: yes
+
+    - name: Add NodeSource architecture repository
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_{{ node_version }} | bash -
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list
+
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Ensure target application root directory exists
+      file:
+        path: "{{ repo_dir }}"
+        state: directory
+        mode: '0755'
+        owner: root
+
+    - name: Clone Application Repository from GitHub
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dir }}"
+        version: "{{ repo_branch }}"
+        force: yes
+
+    # ==================== BACKEND CONFIGURATION ====================
+    - name: Create .env file for Backend Configuration
+      copy:
+        dest: "{{ repo_dir }}/server/.env"
+        content: |
+          PORT=5000
+          NODE_ENV=production
+          MONGO_URI="mongodb+srv://kishanachar8:Vijeythak2026@cluster0.2de3pn7.mongodb.net/?appName=Cluster0"
+          JWT_ACCESS_SECRET="SuperSecretSecureTokenKey2026!@#"
+          JWT_REFRESH_SECRET="AnotherSuperSecureRefreshTokenKey2026!@#"
+        mode: '0600'
+
+    - name: Install Production NPM Packages for Backend
+      npm:
+        path: "{{ repo_dir }}/server"
+        production: yes
+
+    - name: Install PM2 Process Manager globally
+      npm:
+        name: pm2
+        global: yes
+
+    - name: Force Stop existing PM2 Daemon memory cache
+      command: pm2 kill
+      ignore_errors: yes
+
+    - name: Start Hotel App with PM2 from Server Folder
+      command: pm2 start server.js --name "hotel-app" --update-env
+      args:
+        chdir: "{{ repo_dir }}/server"
+      environment:
+        PORT: 5000
+        NODE_ENV: production
+        MONGO_URI: "mongodb+srv://kishanachar8:Vijeythak2026@cluster0.2de3pn7.mongodb.net/?appName=Cluster0"
+        JWT_ACCESS_SECRET: "SuperSecretSecureTokenKey2026!@#"
+        JWT_REFRESH_SECRET: "AnotherSuperSecureRefreshTokenKey2026!@#"
+
+    - name: Ensure PM2 restarts on server boot up
+      command: pm2 save
+
+    # ==================== FRONTEND CONFIGURATION ====================
+    - name: Install Frontend Dependencies
+      npm:
+        path: "{{ repo_dir }}/client"
+
+    - name: Build Frontend Static Assets
+      command: npm run build
+      args:
+        chdir: "{{ repo_dir }}/client"
+
+    - name: Configure Nginx Reverse Proxy Routing
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              # Root directory of your compiled frontend build folder
+              root {{ repo_dir }}/client/dist;
+              index index.html;
+
+              server_name _;
+
+              # Route the frontend user interface
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+
+              # Reverse proxy API traffic natively over to backend port 5000
+              location /api/ {
+                  proxy_pass http://127.0.0.1:5000/;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host $host;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+
+    - name: Restart Nginx to apply clean configurations
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: yes
