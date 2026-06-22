@@ -13,7 +13,6 @@ phases:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image directly targeting the client directory...
-      - # This builds the image using the client folder as the build context
       - docker build -t $REPOSITORY_URI:latest -f client/Dockerfile client/
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
   post_build:
@@ -23,7 +22,7 @@ phases:
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - echo Writing image definitions file for ECS...
-      - # "web" must match the container name in your ECS Task Definition
+      - # IMPORTANT: Replace "web" with the exact container name from your ECS Task Definition
       - printf '[{"name":"web","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
 
 artifacts:
