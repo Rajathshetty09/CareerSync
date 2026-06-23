@@ -3,7 +3,7 @@ import store from '../app/store.js';
 import { setCredentials, clearCredentials } from '../features/auth/authSlice.js';
 
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+  baseURL: 'http://54.198.178.77:5000/api/v1',
   withCredentials: true, // send refresh token cookie automatically
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
