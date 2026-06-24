@@ -4,32 +4,43 @@ phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
-      # Hardcoded Account ID to bypass IAM role restrictions
-      - AWS_ACCOUNT_ID="993471916179"   ////addd account id
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      - REPOSITORIES_FRONTEND=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_FRONTEND
-      - REPOSITORIES_BACKEND=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_BACKEND
+      - aws --version
+      - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPO_NAME
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - IMAGE_TAG=${COMMIT_HASH:-latest}
   build:
     commands:
       - echo Build started on `date`
-      - echo Building Frontend Docker image...
-      - docker build -t $REPOSITORIES_FRONTEND:latest -f client/Dockerfile client/
-      - docker build -t $REPOSITORIES_FRONTEND:$IMAGE_TAG -f client/Dockerfile client/
-      - echo Building Backend Docker image...
-      - docker build -t $REPOSITORIES_BACKEND:latest -f server/Dockerfile server/
-      - docker build -t $REPOSITORIES_BACKEND:$IMAGE_TAG -f server/Dockerfile server/
+      
+      # 1. Build and Tag Frontend
+      - echo Building the Frontend Docker image...
+      - cd frontend && docker build -t $REPOSITORY_URI:frontend-$IMAGE_TAG -t $REPOSITORY_URI:frontend-latest . && cd ..
+      
+      # 2. Build and Tag Backend
+      - echo Building the Backend Docker image...
+      - cd backend && docker build -t $REPOSITORY_URI:backend-$IMAGE_TAG -t $REPOSITORY_URI:backend-latest . && cd ..
   post_build:
     commands:
       - echo Build completed on `date`
-      - echo Pushing Docker images...
-      - docker push $REPOSITORIES_FRONTEND:latest
-      - docker push $REPOSITORIES_FRONTEND:$IMAGE_TAG
-      - docker push $REPOSITORIES_BACKEND:latest
-      - docker push $REPOSITORIES_BACKEND:$IMAGE_TAG
-      - echo Writing image definitions file for ECS...
-      - printf '[{"name":"container1","imageUri":"%s"},{"name":"backend-container","imageUri":"%s"}]' $REPOSITORIES_FRONTEND:$IMAGE_TAG $REPOSITORIES_BACKEND:$IMAGE_TAG > imagedefinitions.json
+      
+      # 1. Push Frontend Images
+      - echo Pushing the Frontend Docker images...
+      - docker push $REPOSITORY_URI:frontend-$IMAGE_TAG
+      - docker push $REPOSITORY_URI:frontend-latest
+      
+      # 2. Push Backend Images
+      - echo Pushing the Backend Docker images...
+      - docker push $REPOSITORY_URI:backend-$IMAGE_TAG
+      - docker push $REPOSITORY_URI:backend-latest
+      
+      # 3. Create Image Definition files for ECS deployment
+      - echo Writing image definitions for ECS...
+      - printf '[{"name":"%s","imageUri":"%s"}]' "$FRONTEND_CONTAINER_NAME" "$REPOSITORY_URI:frontend-$IMAGE_TAG" > frontend_imagedefinitions.json
+      - printf '[{"name":"%s","imageUri":"%s"}]' "$BACKEND_CONTAINER_NAME" "$REPOSITORY_URI:backend-$IMAGE_TAG" > backend_imagedefinitions.json
+
 artifacts:
   files:
-    - imagedefinitions.json
+    - frontend_imagedefinitions.json
+    - backend_imagedefinitions.json
