@@ -1,4 +1,5 @@
-FROM node:20-alpine
+# Line 1: Switched to public ECR mirror to bypass Docker Hub rate limits
+FROM public.ecr.aws/docker/library/node:20-alpine
 
 WORKDIR /app
 
@@ -12,5 +13,5 @@ COPY . .
 # Expose the port your express app runs on
 EXPOSE 5000
 
-# Start the application directly using node
-CMD ["node", "index.js"]
+# FIX: Changed "index.js" to "server.js" to match your repository file tree
+CMD ["node", "server.js"]
